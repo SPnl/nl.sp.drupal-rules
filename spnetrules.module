@@ -1,0 +1,188 @@
+<?php
+
+/**
+ * Implements hook_rules_action_info().
+ * Returns an array of extra actions that this module provides.
+ * @return array Beschikbare acties
+ */
+function spnetrules_rules_action_info() {
+	return array(
+		'spnetrules_action_create_user'     => array(
+			'label'           => t('Create Linked Drupal User Account (SP)'),
+			'module'          => 'civicrm',
+			'access_callback' => '_civicrm_entity_rules_access',
+			'parameter'       => array(
+				'civicrm_contact' => array(
+					'label' => t('CiviCRM Contact'),
+					'type'  => 'civicrm_contact'
+				),
+				'notify'          => array(
+					'label'   => t('Send account notification email'),
+					'type'    => 'boolean',
+					'default' => 1,
+				),
+				'activity'          => array(
+					'label'   => t('Create activity'),
+					'type'    => 'boolean',
+					'default' => 1,
+				),
+				'source_contact_id' => array(
+					'label' => t('Source Contact ID'),
+					'type'  => 'text',
+				),
+				'activity_type_id'  => array(
+					'label' => t('Activity Type ID'),
+					'type'  => 'text',
+				),
+			),
+			'provides'        => array(
+				'civicrm_user'  => array(
+					'label' => t('Created Drupal User'),
+					'type'  => 'user'
+				),
+			),
+			'group'           => t('CiviCRM'),
+			'base'            => 'spnetrules_action_create_user'
+		),
+	);
+}
+
+/**
+ *
+ * /**
+ * Given a contact object, load or create then return a drupal user.
+ * Gebaseerd op civicrm_entity_action_create_user
+ * @param object $contact CiviCRM Contact Object
+ * @param bool $notify Notify user
+ * @return object|boolean $user Drupal User Object or FALSE
+ */
+function spnetrules_action_create_user($contact, $notify = true, $activity = true, $source_contact_id = null, $activity_type_id = null) {
+
+	// Contact could be an object or an array
+	if (!is_array($contact))
+		$contact = (array)$contact;
+
+	$activityParams = array(
+		'activity' => $activity,
+		'source_contact_id' => $source_contact_id,
+		'activity_type_id' => $activity_type_id,
+		'contact_id' => $contact['id'],
+	);
+
+	// Check if user already exists
+	$check = civicrm_api3('UFMatch', 'Get', array(
+		'contact_id' => $contact['id'],
+	));
+	if ($check && $check->count > 0) {
+		watchdog('spnetrules_action_create_user: user already exists for contact ' . $contact['id'], WATCHDOG_INFO);
+		return _spnetrules_action_create_user_status('ALREADY_EXISTS', null, $activityParams);
+	}
+
+	// Complete contact data if necessary
+	if (empty($contact['display_name']) || empty($contact['email'])) {
+		$contact = civicrm_api3('contact', 'getsingle', array(
+			'id'         => $contact['id'],
+			'sequential' => 1,
+			'return'     => 'email,display_name'
+		));
+	}
+
+	// If this user doesn't have an email address, don't create an account
+	if (empty($contact['email'])) {
+		watchdog('spnetrules', 'spnetrules_action_create_user: contact ' . $contact['id'] . ' does not have an email address', WATCHDOG_INFO);
+		return _spnetrules_action_create_user_status('NO_EMAIL', null, $activityParams);
+	}
+
+	// Disable automatic UFMatch
+	$config = CRM_Core_Config::singleton();
+	$config->inCiviCRM = true;
+
+	// Add Drupal account
+	$password = base_convert(uniqid('pass', true), 10, 36);
+	$params = array(
+		'name'   => $contact['id'],
+		'mail'   => $contact['email'],
+		'pass'   => $password,
+		'status' => 1,
+		'init'   => 'email address',
+		'roles'  => array(
+			DRUPAL_AUTHENTICATED_RID => 'authenticated user',
+		),
+	);
+
+	$account = user_save('', $params);
+	$account->password = $password;
+	$config->inCiviCRM = false;
+
+	if (!$account) {
+		watchdog('spnetrules', 'spnetrules_action_create_user: could not create Drupal account for contact ' . $contact['id'], WATCHDOG_WARNING);
+		return _spnetrules_action_create_user_status('CREATION_FAILED', $account, $activityParams);
+	}
+
+	// Add UFMatch manually
+	$ufmatch = civicrm_api3('UFMatch', 'get', array(
+		'contact_id' => $contact['contact_id'],
+	));
+	if ($ufmatch['count'] == 0) {
+		$res = civicrm_api3('UFMatch', 'create', array(
+			'uf_id'      => $account->uid,
+			'uf_name'    => $contact['contact_id'],
+			'contact_id' => $contact['contact_id'],
+		));
+	}
+
+	// Send email confirmation and login link
+	if ($notify) {
+		$mail_status = drupal_mail('user', 'register_no_approval_required', $contact['email'], null, array('account' => $account));
+		if (!$mail_status) {
+			watchdog('spnetrules', 'Could not send user account confirmation mail for contact ' . $contact['id'], WATCHDOG_WARNING);
+			return _spnetrules_action_create_user_status('MAIL_FAILED', $account, $activityParams);
+		}
+	}
+
+	// Return Drupal account
+	return _spnetrules_action_create_user_status('OK', $account, $activityParams);
+}
+
+function _spnetrules_action_create_user_status($status = '', $account = null, $activityParams = array()) {
+	if (!$account)
+		$account = new StdClass;
+
+	if(isset($activityParams['activity']) && $activityParams['activity']) {
+
+		if($status == 'OK') {
+			$message = 'Er is een account aangemaakt voor deze gebruiker op SPnet.<br /><br />Drupal-gebruiker: <a href="/user/' . $account->uid . '/edit">' . $account->uid . '</a>.<br />Status: ' . $status;
+		} else {
+			$message = 'Het aanmaken van een account voor deze gebruiker op SPnet is niet (volledig) geslaagd.<br />Status: ' . $status;
+		}
+
+		$res = civicrm_api3('Activity', 'create', array(
+			'source_contact_id'  => $activityParams['source_contact_id'],
+			'target_contact_id'  => $activityParams['contact_id'],
+			'activity_type_id'   => $activityParams['activity_type_id'],
+			'activity_subject'   => 'Account aanmaken (' . $status . ')',
+			'details'            => $message,
+			'activity_date_time' => date('YmdHis'),
+		));
+		if (!$res || $res['is_error']) {
+			watchdog('spnetrules', 'Could not create activity for contact ' . $activityParams['contact_id'] . ': ' . $res['error_message'], WATCHDOG_WARNING);
+		}
+	}
+
+	return array('civicrm_user' => $account);
+}
+
+/**
+ * Creates a CiviCRM activity for a user based on the provided parameters
+ * @param StdClass $contact CiviCRM target contact
+ * @param int $source_contact_id Source contact ID
+ * @param int $activity_type_id Activity type ID
+ * @param string $subject Activity subject
+ * @param string $details Activity details
+ * @return bool Success
+ */
+function spnetrules_action_create_activity($contact, $source_contact_id, $activity_type_id, $subject = '', $details = '') {
+
+
+	return true;
+}

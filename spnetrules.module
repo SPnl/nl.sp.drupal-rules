@@ -48,12 +48,13 @@ function spnetrules_rules_action_info() {
 }
 
 /**
- *
- * /**
  * Given a contact object, load or create then return a drupal user.
  * Gebaseerd op civicrm_entity_action_create_user
  * @param object $contact CiviCRM Contact Object
- * @param bool $notify Notify user
+ * @param bool $notify Notify user?
+ * @param bool $activity Create activity?
+ * @param null $source_contact_id Activity source contact ID
+ * @param null $activity_type_id Activity type ID
  * @return object|boolean $user Drupal User Object or FALSE
  */
 function spnetrules_action_create_user($contact, $notify = true, $activity = true, $source_contact_id = null, $activity_type_id = null) {
@@ -144,6 +145,13 @@ function spnetrules_action_create_user($contact, $notify = true, $activity = tru
 	return _spnetrules_action_create_user_status('OK', $account, $activityParams);
 }
 
+/**
+ * Returns status + creates activity for this user account
+ * @param string $status Status string
+ * @param null $account Drupal user
+ * @param array $activityParams Parameters for activity
+ * @return array Array containing Drupal user
+ */
 function _spnetrules_action_create_user_status($status = '', $account = null, $activityParams = array()) {
 	if (!$account)
 		$account = new StdClass;
@@ -170,19 +178,4 @@ function _spnetrules_action_create_user_status($status = '', $account = null, $a
 	}
 
 	return array('civicrm_user' => $account);
-}
-
-/**
- * Creates a CiviCRM activity for a user based on the provided parameters
- * @param StdClass $contact CiviCRM target contact
- * @param int $source_contact_id Source contact ID
- * @param int $activity_type_id Activity type ID
- * @param string $subject Activity subject
- * @param string $details Activity details
- * @return bool Success
- */
-function spnetrules_action_create_activity($contact, $source_contact_id, $activity_type_id, $subject = '', $details = '') {
-
-
-	return true;
 }

@@ -74,7 +74,7 @@ function spnetrules_action_create_user($contact, $notify = true, $activity = tru
 	$check = civicrm_api3('UFMatch', 'Get', array(
 		'contact_id' => $contact['id'],
 	));
-	if ($check && $check->count > 0) {
+	if ($check && $check['count'] > 0) {
 		watchdog('spnetrules_action_create_user: user already exists for contact ' . $contact['id'], WATCHDOG_INFO);
 		return _spnetrules_action_create_user_status('ALREADY_EXISTS', null, $activityParams);
 	}

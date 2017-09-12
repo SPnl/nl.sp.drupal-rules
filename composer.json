@@ -1,7 +1,6 @@
 {
   "name": "SPnl/nl.sp.drupal-rules",
   "description": "Adds custom conditions/actions to CiviCRM Rules Integration.",
-  "version": "1.0.0",
   "type": "drupal-module",
   "authors": [
     {

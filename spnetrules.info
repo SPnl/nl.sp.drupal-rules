@@ -1,6 +1,6 @@
 name = SP CiviCRM Rules Integration
 description = "Adds custom conditions/actions to CiviCRM Rules Integration"
-version = 1.0
+version = 1.0.1
 core = 7.x
 package = sprbs
 dependencies[] = civicrm

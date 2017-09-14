@@ -1,7 +1,7 @@
 {
-  "name": "SPnl/nl.sp.drupal-rules",
+  "name": "spnl/nl.sp.drupal-rules",
   "description": "Adds custom conditions/actions to CiviCRM Rules Integration.",
-  "type": "drupal-module",
+  "type": "drupal-custom-module",
   "authors": [
     {
       "name": "Kevin Levie",
